@@ -41,7 +41,7 @@ docker run -d --name pgvector-db \
 
 ![LangGraph 实现简单循环](example/langgraph%E5%AE%9E%E7%8E%B0%E7%AE%80%E5%8D%95%E5%BE%AA%E7%8E%AF.png)
 
-### 3. 工具调用 Agent（计算器）—— [calculator/calculator.py](calculator/calculator.py)
+### 3. 工具调用 Agent（计算器）—— [tools/calculator.py](tools/calculator.py)
 
 ReAct 式「LLM 决策 → 执行工具 → 结果回灌」循环。
 
@@ -118,5 +118,5 @@ My_LangGraph_Learning/
 
 ## 说明
 
-- [example/](example)、[calculator/](calculator)、[content_optimize_agent/](content_optimize_agent) 末尾会用 `get_graph(xray=True).draw_mermaid_png()` 输出流程图：需要联网（langgraph 默认走 mermaid.ink 渲染），在普通终端只会打印对象的 repr，建议在 Jupyter / Notebook 中运行以便直接看图。
+- [example/](example)、[calculator/](tools)、[content_optimize_agent/](content_optimize_agent) 末尾会用 `get_graph(xray=True).draw_mermaid_png()` 输出流程图：需要联网（langgraph 默认走 mermaid.ink 渲染），在普通终端只会打印对象的 repr，建议在 Jupyter / Notebook 中运行以便直接看图。
 - `memory/`、`hitl-demo/` 需要 PostgreSQL；`hitl-demo/` 还需同时启动后端（8000）与前端（5173）。
