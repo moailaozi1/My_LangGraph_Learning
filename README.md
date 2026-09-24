@@ -1,6 +1,6 @@
 # My_LangGraph_Learning
 
-LangGraph 学习实践仓库：从最小图出发，逐步实现循环、工具调用、记忆与人工审批。各主题独立成目录，共用 [config/](config) 中的模型与数据库配置。
+LangGraph 学习实践仓库：从最小图出发，逐步实现循环、工具调用、记忆、人工审批、流式输出与结构化输出。各主题独立成目录，共用 [config/](config) 中的模型与数据库配置。
 
 ## 环境准备
 
@@ -86,6 +86,27 @@ FastAPI + LangGraph + React：AI 起草邮件 → 人工审批 → 恢复执行�
 - 前端 [hitl-demo/frontend/src/App.tsx](hitl-demo/frontend/src/App.tsx)、[ApprovalCard.tsx](hitl-demo/frontend/src/ApprovalCard.tsx)、[api.ts](hitl-demo/frontend/src/api.ts)：对话界面、审批卡片，并用 `localStorage` 中的 `thread_id` 实现刷新后恢复
 - 启动与交互说明见 [hitl-demo/README.md](hitl-demo/README.md)
 
+### 7. 流式输出 —— [streaming/weather_search.py](streaming/weather_search.py)
+
+用 `create_agent` 搭一个天气查询 Agent（`get_weather`、`get_forecast` 两个工具），演示三种流式方式。
+
+- 工具内用 `get_stream_writer()` 主动推送进度（如「正在查询 北京 的天气...」），这类自定义数据走 `custom` 流
+- 演示 1 事件流：`agent.stream_events(..., version="v3")`，遍历 `stream.messages` 逐个取推理增量（`message.reasoning`）、正文增量（`message.text`）和工具调用参数分片（`message.tool_calls`，可看到参数被逐步补齐），最后用 `stream.output` 拿最终状态（v3 在 langgraph 中标记为 experimental）
+- 演示 2 多模式流：`agent.stream(..., stream_mode=["updates", "messages", "custom"])`，分别对应节点级状态更新 / LLM token / 工具内进度
+- 演示 3 异步事件流：`agent.astream_events(..., version="v2")`，只筛 `on_chat_model_stream`、`on_tool_start`、`on_tool_end` 三类关键事件
+
+### 8. 结构化输出 —— [structured_output/structured_output.py](structured_output/structured_output.py)
+
+让模型直接产出符合 Pydantic Schema 的对象，结果统一从 `result["structured_response"]` 读取。
+
+- 三个 Schema：`ContactInfo`（name / email / phone）、`ProductReview`（`rating` 为 1-5 的 `Optional[int]` 且带 `ge/le` 校验、`sentiment` 用 `Literal` 限定枚举、`key_points` 为字符串列表）、`CustomerComplaint`（`issue_type` / `severity` 都用 `Literal` 限定）
+- 演示 1 原生策略：`create_agent(response_format=ContactInfo)` 直接传 Pydantic 模型，由 langchain 按模型能力自动选策略——优先 `ProviderStrategy`（原生结构化输出），模型不支持时回落 `ToolStrategy`
+- 演示 2 工具调用策略：显式 `response_format=ToolStrategy(ProductReview)`，即把 Schema 当成工具调用参数来生成
+- 演示 3 Union Schema：`ToolStrategy(Union[ProductReview, CustomerComplaint])`，同一个 Agent 按输入自动选择用哪个 Schema（评论分析 / 投诉处理）
+- 演示 4 自定义错误处理：`handle_errors` 回调分别处理 `StructuredOutputValidationError` 与 `MultipleStructuredOutputsError`，把修正提示回灌给模型重试
+- 演示 5 自定义工具消息：`tool_message_content` 替换回填给模型的 `ToolMessage` 内容
+- 注意：该示例没有复用 `config.model`，而是自行构造 `ChatDeepSeek`，并用 `extra_body={"thinking": {"type": "disabled"}}` 关闭思考模式
+
 ## 公共模块
 
 | 文件 | 作用 |
@@ -102,11 +123,14 @@ My_LangGraph_Learning/
 ├── example/
 │   ├── how_to_implement_loop.py     # 条件边实现循环
 │   └── langgraph实现简单循环.png      # 循环流程图
-├── calculator/calculator.py         # 工具调用 Agent
+├── tools/calculator.py              # 工具调用 Agent（@tool + bind_tools）
 ├── content_optimize_agent/content.py  # 评估-优化 Agent
 ├── memory/
 │   ├── short_term_memory.py         # 短期记忆（checkpointer）
 │   └── long_term_memory.py          # 长期记忆（store + 向量检索）
+├── streaming/weather_search.py      # 流式输出（事件流 / stream_mode / astream_events）
+├── structured_output/
+│   └── structured_output.py         # 结构化输出（Pydantic Schema + 两种策略）
 ├── hitl-demo/                       # Human-in-the-Loop 全栈 Demo
 │   ├── backend/                     # FastAPI + LangGraph
 │   ├── frontend/                    # React + Vite
@@ -118,5 +142,5 @@ My_LangGraph_Learning/
 
 ## 说明
 
-- [example/](example)、[calculator/](tools)、[content_optimize_agent/](content_optimize_agent) 末尾会用 `get_graph(xray=True).draw_mermaid_png()` 输出流程图：需要联网（langgraph 默认走 mermaid.ink 渲染），在普通终端只会打印对象的 repr，建议在 Jupyter / Notebook 中运行以便直接看图。
+- [example/](example)、[tools/](tools)、[content_optimize_agent/](content_optimize_agent) 末尾会用 `get_graph(xray=True).draw_mermaid_png()` 输出流程图：需要联网（langgraph 默认走 mermaid.ink 渲染），在普通终端只会打印对象的 repr，建议在 Jupyter / Notebook 中运行以便直接看图。
 - `memory/`、`hitl-demo/` 需要 PostgreSQL；`hitl-demo/` 还需同时启动后端（8000）与前端（5173）。
